@@ -5,7 +5,7 @@
 ## 技术栈
 
 **前端：** React 18 + Vite
-**后端：** Python FastAPI + Uvicorn
+**后端：** Python FastAPI + Uvicorn + SQLAlchemy + SQLite
 
 ## 项目结构
 
@@ -66,5 +66,6 @@ npm run dev
 
 ## 说明
 
-- 后端使用内存存储，重启后数据会丢失
+- 后端使用 SQLite 数据库存储，数据持久化保存
+- 数据库文件 `notes.db` 自动创建在 backend 目录下
 - 前后端通过 REST API 通信，可独立部署

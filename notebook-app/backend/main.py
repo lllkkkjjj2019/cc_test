@@ -1,9 +1,30 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from sqlalchemy import create_engine, Column, String, Text, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import uuid
+
+# 数据库配置
+DATABASE_URL = "sqlite:///./notes.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# 数据库模型
+class NoteModel(Base):
+    __tablename__ = "notes"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String, nullable=False)
+    content = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+# 创建表
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Notebook API")
 
@@ -16,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 数据模型
+# Pydantic 模型
 class NoteCreate(BaseModel):
     title: str
     content: str
@@ -25,70 +46,79 @@ class NoteUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
 
-class Note(BaseModel):
+class NoteResponse(BaseModel):
     id: str
     title: str
     content: str
     created_at: datetime
     updated_at: datetime
 
-# 内存存储（简单实现）
-notes_db: dict[str, Note] = {}
+    model_config = {"from_attributes": True}
+
+# 数据库依赖
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @app.get("/")
 def root():
     return {"message": "Notebook API"}
 
-@app.get("/notes", response_model=list[Note])
-def get_notes():
+@app.get("/notes", response_model=list[NoteResponse])
+def get_notes(db: Session = Depends(get_db)):
     """获取所有笔记"""
-    return list(notes_db.values())
+    return db.query(NoteModel).order_by(NoteModel.updated_at.desc()).all()
 
-@app.get("/notes/{note_id}", response_model=Note)
-def get_note(note_id: str):
+@app.get("/notes/{note_id}", response_model=NoteResponse)
+def get_note(note_id: str, db: Session = Depends(get_db)):
     """获取单个笔记"""
-    if note_id not in notes_db:
+    note = db.query(NoteModel).filter(NoteModel.id == note_id).first()
+    if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    return notes_db[note_id]
+    return note
 
-@app.post("/notes", response_model=Note)
-def create_note(note: NoteCreate):
+@app.post("/notes", response_model=NoteResponse)
+def create_note(note: NoteCreate, db: Session = Depends(get_db)):
     """创建笔记"""
-    note_id = str(uuid.uuid4())
     now = datetime.now()
-    new_note = Note(
-        id=note_id,
+    db_note = NoteModel(
+        id=str(uuid.uuid4()),
         title=note.title,
         content=note.content,
         created_at=now,
-        updated_at=now
+        updated_at=now,
     )
-    notes_db[note_id] = new_note
-    return new_note
+    db.add(db_note)
+    db.commit()
+    db.refresh(db_note)
+    return db_note
 
-@app.put("/notes/{note_id}", response_model=Note)
-def update_note(note_id: str, note: NoteUpdate):
+@app.put("/notes/{note_id}", response_model=NoteResponse)
+def update_note(note_id: str, note: NoteUpdate, db: Session = Depends(get_db)):
     """更新笔记"""
-    if note_id not in notes_db:
+    db_note = db.query(NoteModel).filter(NoteModel.id == note_id).first()
+    if not db_note:
         raise HTTPException(status_code=404, detail="Note not found")
 
-    existing_note = notes_db[note_id]
-    update_data = note.model_dump(exclude_unset=True)
+    if note.title is not None:
+        db_note.title = note.title
+    if note.content is not None:
+        db_note.content = note.content
+    db_note.updated_at = datetime.now()
 
-    updated_note = Note(
-        id=existing_note.id,
-        title=update_data.get("title", existing_note.title),
-        content=update_data.get("content", existing_note.content),
-        created_at=existing_note.created_at,
-        updated_at=datetime.now()
-    )
-    notes_db[note_id] = updated_note
-    return updated_note
+    db.commit()
+    db.refresh(db_note)
+    return db_note
 
 @app.delete("/notes/{note_id}")
-def delete_note(note_id: str):
+def delete_note(note_id: str, db: Session = Depends(get_db)):
     """删除笔记"""
-    if note_id not in notes_db:
+    db_note = db.query(NoteModel).filter(NoteModel.id == note_id).first()
+    if not db_note:
         raise HTTPException(status_code=404, detail="Note not found")
-    del notes_db[note_id]
+    db.delete(db_note)
+    db.commit()
     return {"message": "Note deleted"}
