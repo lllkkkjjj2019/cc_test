@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-**前端：** React 18 + Vite
+**前端：** React 18 + TypeScript + Vite
 **后端：** Python FastAPI + Uvicorn + SQLAlchemy + SQLite
 
 ## 项目结构

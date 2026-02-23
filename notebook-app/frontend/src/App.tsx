@@ -2,9 +2,17 @@ import { useState, useEffect } from 'react'
 
 const API_URL = 'http://localhost:8000'
 
+interface Note {
+  id: string
+  title: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
 function App() {
-  const [notes, setNotes] = useState([])
-  const [selectedNote, setSelectedNote] = useState(null)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
@@ -12,7 +20,7 @@ function App() {
   const fetchNotes = async () => {
     try {
       const res = await fetch(`${API_URL}/notes`)
-      const data = await res.json()
+      const data: Note[] = await res.json()
       setNotes(data)
     } catch (err) {
       console.error('获取笔记失败:', err)
@@ -24,7 +32,7 @@ function App() {
   }, [])
 
   // 选择笔记
-  const handleSelectNote = (note) => {
+  const handleSelectNote = (note: Note) => {
     setSelectedNote(note)
     setTitle(note.title)
     setContent(note.content)
@@ -38,7 +46,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: '新笔记', content: '' })
       })
-      const newNote = await res.json()
+      const newNote: Note = await res.json()
       setNotes([...notes, newNote])
       handleSelectNote(newNote)
     } catch (err) {
@@ -55,7 +63,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content })
       })
-      const updatedNote = await res.json()
+      const updatedNote: Note = await res.json()
       setNotes(notes.map(n => n.id === updatedNote.id ? updatedNote : n))
       setSelectedNote(updatedNote)
     } catch (err) {
